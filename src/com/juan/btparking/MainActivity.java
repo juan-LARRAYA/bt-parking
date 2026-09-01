@@ -18,10 +18,14 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.text.Editable;
+import android.text.TextWatcher;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -39,6 +43,8 @@ public class MainActivity extends Activity {
     private TextView statusView;
     private TextView pairedView;
     private ListView listView;
+    private EditText nameFilterView;
+    private int recentDaysFilter = 0;
     private List<LocationStore.Entry> entries = new ArrayList<>();
 
     @Override
@@ -99,6 +105,35 @@ public class MainActivity extends Activity {
         listTitle.setTextSize(16f);
         listTitle.setPadding(0, 24, 0, 8);
         header.addView(listTitle);
+
+        nameFilterView = new EditText(this);
+        nameFilterView.setHint("Filtrar por nombre Bluetooth");
+        nameFilterView.setHintTextColor(Color.parseColor("#C6CDD6"));
+        nameFilterView.setTextColor(Color.WHITE);
+        nameFilterView.setSingleLine(true);
+        nameFilterView.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (listView != null) refreshList();
+            }
+            @Override public void afterTextChanged(Editable s) { }
+        });
+        header.addView(nameFilterView);
+
+        final String[] dateRanges = {"Todas las fechas", "Ultimas 24 horas", "Ultimos 7 dias", "Ultimos 30 dias"};
+        final int[] dateRangeDays = {0, 1, 7, 30};
+        Spinner dateFilterView = new Spinner(this);
+        ArrayAdapter<String> dateAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, dateRanges);
+        dateAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        dateFilterView.setAdapter(dateAdapter);
+        dateFilterView.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                recentDaysFilter = dateRangeDays[position];
+                if (listView != null) refreshList();
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
+        });
+        header.addView(dateFilterView);
 
         root.addView(header, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -191,7 +226,15 @@ public class MainActivity extends Activity {
     }
 
     private void refreshList() {
-        entries = LocationStore.loadAll(this);
+        List<LocationStore.Entry> allEntries = LocationStore.loadAll(this);
+        entries = new ArrayList<>();
+        String nameQuery = nameFilterView == null ? "" : nameFilterView.getText().toString();
+        long now = System.currentTimeMillis();
+        for (LocationStore.Entry entry : allEntries) {
+            if (HistoryFilter.matches(entry.name, entry.timeMillis, nameQuery, recentDaysFilter, now)) {
+                entries.add(entry);
+            }
+        }
         Collections.sort(entries, new Comparator<LocationStore.Entry>() {
             @Override public int compare(LocationStore.Entry a, LocationStore.Entry b) {
                 return Long.compare(b.timeMillis, a.timeMillis);
@@ -203,7 +246,9 @@ public class MainActivity extends Activity {
             labels.add(e.name + "\n" + fmt.format(new Date(e.timeMillis)) + "  (" + String.format(Locale.US, "%.5f, %.5f", e.lat, e.lon) + ")");
         }
         if (labels.isEmpty()) {
-            labels.add("(vacio) - desconecta un dispositivo Bluetooth o toca \"Probar ahora\"");
+            labels.add(allEntries.isEmpty()
+                    ? "(vacio) - desconecta un dispositivo Bluetooth o toca \"Probar ahora\""
+                    : "No hay ubicaciones que coincidan con los filtros");
         }
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, labels);
         listView.setAdapter(adapter);
