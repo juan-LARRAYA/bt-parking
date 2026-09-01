@@ -34,9 +34,10 @@ public class BluetoothDisconnectReceiver extends BroadcastReceiver {
         try {
             name = device.getName();
         } catch (SecurityException se) {
-            name = address;
+            return;
         }
-        if (name == null) name = address;
+        if (!DeviceNameFilter.hasBluetoothName(name, address)) return;
+        name = name.trim();
         final String finalName = name;
         final String finalAddress = address;
 
